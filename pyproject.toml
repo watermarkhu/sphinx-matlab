@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "sphinx-matlab"
+version = "0.1.0"
+description = "Sphinx extension to (auto-)document MATLAB source files"
+authors = ["Mark Shui Hu <watermarkhu@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+sphinx-autodoc2 = "^0.4.2"
+textmate-grammar-python = "^0.1.1"
+
+[tool.poetry.group.test.dependencies]
+sphinx = "^4.0.0"
+pytest = "^7.3.1"
+pytest-icdiff = "^0.8"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
