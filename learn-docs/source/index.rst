@@ -7,13 +7,13 @@ Welcome to learn-autodoc's documentation!
 =========================================
 
 
-.. autodoc2-docstring:: sphinx_matlab.test._example
+.. autodoc2-docstring:: sample.test._example
     :literal:
     :literal-linenos:
     :literal-lexer: markdown
 
 
-.. autodoc2-docstring:: sphinx_matlab.test._example
+.. autodoc2-docstring:: sample.test._example
 
 Indices and tables
 ==================

@@ -29,10 +29,16 @@ author = 'watermarkhu'
 # ones.
 extensions = [
     "autodoc2",
+    # "sphinx_matlab"
 ]
+
+matlab_path = [
+    "../../test/src"
+]
+
 autodoc2_packages = [
     {
-        "path": "../../sphinx_matlab",
+        "path": "../sample",
         "auto_mode": False,
     },
 ]
