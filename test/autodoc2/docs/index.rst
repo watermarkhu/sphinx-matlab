@@ -13,7 +13,7 @@ Welcome to learn-autodoc's documentation!
     :literal-lexer: markdown
 
 
-.. autodoc2-docstring:: src.test._example
+.. autodoc2-object:: src.test._example
 
 Indices and tables
 ==================

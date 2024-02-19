@@ -28,6 +28,7 @@ author = 'watermarkhu'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "myst_parser",
     "autodoc2",
 ]
 
@@ -37,7 +38,26 @@ autodoc2_packages = [
         "auto_mode": False,
     },
 ]
-autodoc2_render_plugin = "myst"
+autodoc2_docstring_parser_regexes = [
+    # this will render all docstrings as Markdown
+    (r".*", "myst"),
+]
+
+myst_enable_extensions = [
+    # "amsmath",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "fieldlist",
+    # "html_admonition",
+    # "html_image",
+    "linkify",
+    # "replacements",
+    # "smartquotes",
+    "strikethrough",
+    # "substitution",
+    "tasklist",
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

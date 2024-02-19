@@ -17,6 +17,129 @@ class Config:
         }
     )
 
+    output_dir: str = dc.field(
+        default="apidocs",
+        metadata={
+            "help": (
+                "The root output directory for the documentation, "
+                "relative to the source directory (in POSIX format)."
+            ),
+            "sphinx_type": str,
+            "category": "render",
+        },
+    )
+
+    render_plugin: type[RendererBase] = dc.field(
+        default_factory=(lambda: _load_renderer("render_plugin", "rst")),
+        metadata={
+            "help": (
+                "The renderer to use for the documentation. "
+                "This can be one of `rst` or `md`/`myst`, "
+                "to use the built-in renderers, "
+                "or a string pointing to a class that inherits from `RendererBase`, "
+                "such as `mypackage.mymodule.MyRenderer`."
+            ),
+            "sphinx_type": str,
+            "sphinx_default": "rst",
+            "sphinx_validate": _load_renderer,
+            "doc_type": "str",
+            "category": "render",
+        },
+    )
+
+    hidden_objects: set[
+        t.Literal["undoc", "hidden", "private", "protected", "inherited"]
+    ] = dc.field(
+        default_factory=lambda: {"hidden", "private", "inherited"},
+        metadata={
+            "help": (
+                "The default hidden items. "
+                "Can contain:\n"
+                "- `undoc`: undocumented objects\n"
+                "- `hidden`: Hidden methods, e.g. `(Hidden)`\n"
+                "- `private`: Private method, e.g. `(Access=private)`\n"
+                "- `protected`: Protected method, e.g. `(Access=protected)`\n"
+                "- `inherited`: inherited class methods\n"
+            ),
+            "sphinx_type": list,
+            "sphinx_validate": _validate_hidden_objects,
+            "doc_type": 'list["undoc" | "dunder" | "private" | "inherited"]',
+            "category": "render",
+        },
+    )
+
+    no_index: bool = dc.field(
+        default=False,
+        metadata={
+            "help": "Do not generate a cross-reference index.",
+            "sphinx_type": bool,
+            "category": "render",
+        },
+    )
+
+    module_summary: bool = dc.field(
+        default=True,
+        metadata={
+            "help": "Whether to include a per-module summary.",
+            "sphinx_type": bool,
+            "category": "render",
+        },
+    )
+
+    class_docstring: t.Literal["merge", "both"] = dc.field(
+        default="merge",
+        metadata={
+            "help": (
+                "How to handle documenting of classes. "
+                "If `merge`, the constructor docstring is appended to the class docstring "
+                "and the constructor method is omitted."
+                "If `both`, then the constructor method is included separately."
+            ),
+            "sphinx_type": str,
+            "doc_type": '"merge" | "both"',
+            "category": "render",
+        },
+    )
+
+    class_inheritance: bool = dc.field(
+        default=True,
+        metadata={
+            "help": "Whether to document class inheritance.",
+            "sphinx_type": bool,
+            "category": "render",
+        },
+    )
+
+    validators: bool = dc.field(
+        default=True,
+        metadata={
+            "help": "Whether to include validators.",
+            "sphinx_type": bool,
+            "category": "render",
+        },
+    )
+
+    docstrings: t.Literal["all", "direct", "none"] = dc.field(
+        default="direct",
+        metadata={
+            "help": "Which objects to include docstrings for. "
+            "'direct' means only from objects that are not inherited.",
+            "sphinx_type": str,
+            "doc_type": '"all" | "direct"',
+            "category": "render",
+        },
+    )
+
+    sort_names: bool = dc.field(
+        default=False,
+        metadata={
+            "help": "Whether to sort by name, when documenting, otherwise order by source",
+            "sphinx_type": bool,
+            "category": "render",
+        },
+    )
+
+    
     def as_triple(self) -> t.Iterable[tuple[str, t.Any, dc.Field]]:  # type: ignore[type-arg]
         """Yield triples of (name, value, field)."""
         fields = {f.name: f for f in dc.fields(self.__class__)}

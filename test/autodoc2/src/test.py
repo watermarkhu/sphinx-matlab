@@ -11,9 +11,9 @@ def _example(a: int, b: str) -> None:
 
     and a table:
 
-    | a | b | c |
-    | - | - | - |
-    | 1 | 2 | 3 |
+    | foo | bar |
+    | --- | --- |
+    | baz | bim |
 
     and, using the `fieldlist` extension, a field list:
 

@@ -7,5 +7,5 @@ __version__ = "0.1.0"
 
 
 def setup(app: Sphinx):
-    from .extension import _setup
+    from .extension import setup as _setup
     return _setup(app)

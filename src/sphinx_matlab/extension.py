@@ -5,7 +5,7 @@ from . import __version__
 from .config import Config, CONFIG_PREFIX
 
 
-def _setup(app: Sphinx):
+def setup(app: Sphinx):
     for name, default, field in Config().as_triple():
         sphinx_type = t.Any
         if "sphinx_type" in field.metadata:

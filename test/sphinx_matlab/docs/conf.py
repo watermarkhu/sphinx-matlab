@@ -29,11 +29,13 @@ author = 'watermarkhu'
 # ones.
 extensions = [
     "sphinx_matlab"
+    "myst-parser"
 ]
 
 matlab_path = [
     "../src"
 ]
+matlab_render_plugin = "myst"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
