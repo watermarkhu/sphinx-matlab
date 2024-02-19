@@ -32,7 +32,7 @@ extensions = [
 ]
 
 matlab_path = [
-    "../../test/src"
+    "../src"
 ]
 
 # Add any paths that contain templates here, relative to this directory.

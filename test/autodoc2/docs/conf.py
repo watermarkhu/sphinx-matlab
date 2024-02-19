@@ -33,7 +33,7 @@ extensions = [
 
 autodoc2_packages = [
     {
-        "path": "../sample",
+        "path": "../src",
         "auto_mode": False,
     },
 ]
