@@ -5,12 +5,14 @@ description = "Sphinx extension to (auto-)document MATLAB source files"
 authors = ["Mark Shui Hu <watermarkhu@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+packages = [{include = "sphinx_matlab", from="src"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 sphinx-autodoc2 = "^0.4.2"
 astroid = "2.15.8"
-textmate-grammar-python = "^0.1.1"
+textmate-grammar-python = { path = "../textmate-grammar-python/", develop = true }
+matlab-ns = { path = "../matlab-ns/", develop = true }
 
 [tool.poetry.group.test.dependencies]
 sphinx = "^7.0.0"

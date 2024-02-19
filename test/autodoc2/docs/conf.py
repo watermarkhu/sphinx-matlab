@@ -17,7 +17,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'learn-autodoc'
+project = 'autodoc2'
 copyright = '2023, watermarkhu'
 author = 'watermarkhu'
 
@@ -29,11 +29,6 @@ author = 'watermarkhu'
 # ones.
 extensions = [
     "autodoc2",
-    # "sphinx_matlab"
-]
-
-matlab_path = [
-    "../../test/src"
 ]
 
 autodoc2_packages = [
