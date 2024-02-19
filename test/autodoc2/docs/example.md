@@ -29,5 +29,8 @@ literal-lexer: markdown
 ---
 ```
 
-:::{autodoc2-docstring} src.test._example
+:::{autodoc2-object} src.test._example
+    no_index = true
 :::
+
+

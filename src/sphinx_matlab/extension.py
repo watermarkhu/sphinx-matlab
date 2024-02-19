@@ -1,8 +1,9 @@
-from sphinx.application import Sphinx
 import typing as t
 
+from sphinx.application import Sphinx
+
 from . import __version__
-from .config import Config, CONFIG_PREFIX
+from .config import CONFIG_PREFIX, Config
 
 
 def setup(app: Sphinx):
@@ -24,7 +25,6 @@ def setup(app: Sphinx):
         "version": __version__,
         # "env_version": "hash_based_on_filetree",
         "parallel_write_safe": True,
-        "parallel_write_safe": False
     }
 
 

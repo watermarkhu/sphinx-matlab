@@ -42,6 +42,7 @@ autodoc2_docstring_parser_regexes = [
     # this will render all docstrings as Markdown
     (r".*", "myst"),
 ]
+autodoc2_render_plugin = "md"
 
 myst_enable_extensions = [
     # "amsmath",
