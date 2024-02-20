@@ -1,9 +1,13 @@
 import typing as t
+from pathlib import Path
 
+from matlab_ns import Workspace
 from sphinx.application import Sphinx
 
 from . import __version__
 from .config import CONFIG_PREFIX, Config
+from .matobject import get_matobject
+from .utils import WarningSubtypes, load_config, warn_sphinx
 
 
 def setup(app: Sphinx):
@@ -20,7 +24,7 @@ def setup(app: Sphinx):
             types=sphinx_type,
         )
 
-    app.connect("builder-inited", create_namespace_from_path)
+    app.connect("builder-inited", create_namespace)
     return {
         "version": __version__,
         # "env_version": "hash_based_on_filetree",
@@ -28,5 +32,25 @@ def setup(app: Sphinx):
     }
 
 
-def create_namespace_from_path(app: Sphinx):
+def create_namespace(app: Sphinx) -> None:
+    config = load_config(app)
+    workspace = Workspace()
+    confdir = Path(app.confdir)
+
+    qualified_path = []
+    for path in config.path:
+        if (confdir / path).exists():
+            qualified_path.append((confdir / path).resolve())
+        elif Path(path).exists():
+            qualified_path.append(Path(path).resolve())
+        else:
+            warn_sphinx(
+                f"Configured path does not exist: {path}",
+                WarningSubtypes.MISSING_PATH,
+            )
+    workspace.init_namespace(qualified_path)
+    app.env.workspace = workspace
+
+    node = app.env.workspace.find_symbol("argumentValidation")
+    metadata = get_matobject(node._element, node.node_type)
     return

@@ -1,9 +1,8 @@
-function argumentValidation(x,~,v,method,flag, opts)
+function argumentValidation(x,v,method,flag, opts)
     % Comment before arguments blocks
     arguments
         % Block comment
-        x (1,:) {mustBeNumeric,mustBeReal} % trailing coment
-        ~
+        x (1,:) {mustBeNumeric,mustBeReal} = 1 % trailing coment
         % Line comment
         v (1,:) {mustBeNumeric,mustBeReal, mustBeEqualSize(v,x)}
         method (1,:) char {mustBeMember(method,{'linear','cubic','spline'})} = 'linear' % End of line comment

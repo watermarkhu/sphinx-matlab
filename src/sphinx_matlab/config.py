@@ -3,10 +3,7 @@ import re
 import typing as t
 
 from autodoc2.config import _load_renderer
-
-if t.TYPE_CHECKING:
-    from autodoc2.render.base import RendererBase
-
+from autodoc2.render.base import RendererBase
 
 CONFIG_PREFIX = "matlab_"
 
