@@ -52,5 +52,6 @@ def create_namespace(app: Sphinx) -> None:
     app.env.workspace = workspace
 
     node = app.env.workspace.find_symbol("argumentValidation")
-    metadata = get_matobject(node._element, node.node_type)
+    func = get_matobject(node)
+    print(func.get_doc(show_arguments=True, show_options_table=True, renderer="md"))
     return

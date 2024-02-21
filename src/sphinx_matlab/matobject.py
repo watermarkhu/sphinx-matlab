@@ -1,22 +1,40 @@
-from typing import ClassVar, Protocol
 from collections import OrderedDict
 from dataclasses import dataclass
+from typing import ClassVar, Protocol
 
-from matlab_ns.namespace_node import NamespaceNodeType
+from matlab_ns.namespace_node import NamespaceNode, NamespaceNodeType
+from tabulate import tabulate
 from textmate_grammar.elements import ContentElement
 
 
-def get_matobject(element: ContentElement, node_type: NamespaceNodeType) -> dict:
-    if element is None:
-        return {}
+class MatObject(Protocol):
+    doc: ClassVar[str]
+    _textmate_token = ""
 
-    match node_type:
+    def validate_token(self, element: ContentElement) -> None:
+        if self._textmate_token and self._textmate_token != element.token:
+            raise ValueError
+
+
+def get_matobject(node: NamespaceNode) -> MatObject | None:
+    """Returns the appropiate MATLAB object based on the NamespaceNode
+
+    Args:
+        node (NamespaceNode): The matlab-ns node object
+
+    Returns:
+        MatObject | None: The
+    """
+    if node._element is None:
+        return None
+
+    match node.node_type:
         case NamespaceNodeType.FUNCTION:
-            return Function(element)
+            return Function(node)
         case NamespaceNodeType.SCRIPT:
-            return Script(element)
+            return Script(node)
         case _:
-            return {}
+            return None
 
 
 def parse_comment_docstring(lines: list[str]) -> str:
@@ -30,29 +48,32 @@ def parse_comment_docstring(lines: list[str]) -> str:
     return docstring.strip()
 
 
-class MatObject(Protocol):
-    doc: ClassVar[str]
-    _textmate_token = ""
-
-    def validate_token(self, element: ContentElement) -> None:
-        if self._textmate_token and self._textmate_token != element.token:
-            raise ValueError
-
-
 class Script(MatObject):
     _textmate_token = ""
 
-    def __init__(self, element: ContentElement, **kwargs) -> None:
-        self.validate_token(element)
-        self._element = element
+    def __init__(self, node: NamespaceNode, **kwargs) -> None:
+        self.validate_token(node._element)
+        self.node = node
 
         docstring_lines: list[str] = []
-        for function_item, _ in element.find(
-            ["comment.line.percentage.matlab", "comment.block.percentage.matlab"],
+        for function_item, _ in node._element.find(
+            [
+                "comment.line.percentage.matlab",
+                "comment.line.double-percentage.matlab",
+                "comment.block.percentage.matlab",
+            ],
             stop_tokens="*",
             verbosity=1,
         ):
-            if function_item.token == "comment.block.percentage.matlab":
+            if function_item.token == "comment.line.percentage.matlab":
+                docstring_lines.append(
+                    function_item.content[function_item.content.index("%") + 1 :]
+                )
+            elif function_item.token == "comment.line.double-percentage.matlab":
+                docstring_lines.append(
+                    function_item.content[function_item.content.index("%%") + 2 :]
+                )
+            else:
                 # Block comments will take precedence over single % comments
 
                 bracket = function_item.content.index("%{") + 2
@@ -61,11 +82,6 @@ class Script(MatObject):
                     begin : function_item.content.index("%}")
                 ].split("\n")
                 break
-
-            else:
-                docstring_lines.append(
-                    function_item.content[function_item.content.index("%") + 1 :]
-                )
 
         self.doc = parse_comment_docstring(docstring_lines)
 
@@ -86,26 +102,23 @@ class Property(MatObject):
 
     def __init__(
         self,
-        element: ContentElement,
+        node: NamespaceNode,
         attributes: PropertyAttributes | ArgumentAttributes,
         docstring_lines: list[str] | None = None,
         **kwargs,
     ) -> None:
-        self.validate_token(element)
-        self.element = element
+        self.validate_token(node._element)
+        self.node = node
         self._attributes = attributes
 
-        self.name: str = element.begin[0].content
+        self.name: str = node._element.begin[0].content
         self.size: list[str] = []
         self.type: str = ""
         self.validators: list[str] = []
         self.default: str = ""
 
-        if docstring_lines is None:
-            docstring_lines = []
-
-        if element.end:
-            default_elements = element.findall(
+        if node._element.end:
+            default_elements = node._element.findall(
                 "*",
                 stop_tokens=[
                     "comment.line.percentage.matlab",
@@ -113,6 +126,7 @@ class Property(MatObject):
                     "comment.line.double-percentage.matlab",
                 ],
                 attribute="end",
+                verbosity=1,
             )
             if (
                 default_elements
@@ -120,15 +134,16 @@ class Property(MatObject):
             ):
                 self.default = "".join([el.content for el, _ in default_elements[1:]])
 
-            doc_elements = element.findall("comment.line.percentage.matlab", attribute="end")
+            doc_elements = node._element.findall("comment.line.percentage.matlab", attribute="end")
+            lines = [el.content[1:] for el, _ in doc_elements]
+            if docstring_lines:
+                lines += [""] + docstring_lines
 
-            self.doc = parse_comment_docstring(
-                docstring_lines + [""] + [el.content[1:] for el, _ in doc_elements]
-            )
+            self.doc = parse_comment_docstring(lines)
         else:
             self.doc = parse_comment_docstring(docstring_lines)
 
-        for expression, _ in element.find(
+        for expression, _ in node._element.find(
             [
                 "storage.type.matlab",
                 "meta.parens.size.matlab",
@@ -147,21 +162,22 @@ class Property(MatObject):
 class Function(MatObject):
     _textmate_token = "meta.function.matlab"
 
-    def __init__(self, element: ContentElement) -> None:
-        self.validate_token(element)
-        self._element = element
+    def __init__(self, node: NamespaceNode) -> None:
+        self.validate_token(node._element)
+        self.node = node
 
         self.input: OrderedDict[Property | str] = OrderedDict()
-        self.nvpairs: dict[Property | str] = dict()
+        self.options: dict[Property | str] = dict()
         self.output: OrderedDict[Property | str] = OrderedDict()
 
         docstring_lines: list[str] = []
 
-        for function_item, _ in element.find(
+        for function_item, _ in node._element.find(
             [
                 "meta.function.declaration.matlab",
                 "comment.line.percentage.matlab",
                 "comment.block.percentage.matlab",
+                "comment.line.double-percentage.matlab",
                 "meta.arguments.matlab",
             ],
             verbosity=1,
@@ -186,9 +202,14 @@ class Function(MatObject):
                     begin : function_item.content.index("%}")
                 ].split("\n")
 
-            elif function_item.token == "comment.line.percentage.matlab":
+            elif function_item.token in ["comment.line.percentage.matlab"]:
                 docstring_lines.append(
                     function_item.content[function_item.content.index("%") + 1 :]
+                )
+
+            elif function_item.token in ["comment.line.double-percentage.matlab"]:
+                docstring_lines.append(
+                    function_item.content[function_item.content.index("%%") + 2 :]
                 )
 
             else:  # meta.arguments.matlab
@@ -220,13 +241,10 @@ class Function(MatObject):
                         )
                 else:
                     if argument:
-                        docstring, argument_doc_parts = (
-                            parse_comment_docstring(argument_doc_parts),
-                            [],
-                        )
-                        self._add_argument(arg_item, attributes, docstring)
+                        self._add_argument(argument, attributes, argument_doc_parts)
+                        argument_doc_parts = []
 
-        self._doc = parse_comment_docstring(docstring_lines)
+        self.doc = parse_comment_docstring(docstring_lines)
 
     def _add_argument(
         self,
@@ -242,13 +260,49 @@ class Function(MatObject):
             if "." in argument.name:
                 self.input.pop(argument.name.split(".")[0], None)
                 argument.name = argument.name.split(".")[1]
-                self.nvpairs[argument.name] = argument
+                self.options[argument.name] = argument
             else:
                 self.input[argument.name] = argument
 
-    @property
-    def doc(self, show_arguments: bool = False) -> str:
-        docstring = self._doc
-        if show_arguments:
-            docstring += "\nTODO add argments"
+    def get_doc(
+        self, show_arguments: bool = False, show_options_table: bool = False, renderer: str = "md"
+    ) -> str:
+        codetick = "``" if renderer == "rst" else "`"
+
+        docstring = self.doc
+        if not show_arguments:
+            return docstring
+
+        if self.input:
+            docstring += "\n"
+        for argument in self.input.values():
+            if isinstance(argument, str):
+                docstring += f"\n:param {argument}:"
+            else:
+                doc = argument.doc.replace("\n", " ")
+                docstring += "\n:param "
+                if argument.type:
+                    docstring += argument.type
+                docstring += f" {argument.name}: {doc}"
+                if argument.default:
+                    docstring += f" Defaults to {codetick}{argument.default}{codetick}"
+
+        if show_options_table and self.options:
+            docstring += "\n\n"
+            docstring += (
+                "Name-value pairs\n----------------\n"
+                if renderer == "rst"
+                else "## Name-value pairs\n"
+            )
+            table = []
+            headers = ["name", "type", "doc", "default"]
+            for name, argument in self.options.items():
+                doc = argument.doc.replace("\n", " ")
+                table.append([name, argument.type, doc, f"{codetick}{argument.default}{codetick}"])
+            options_table = tabulate(
+                table, headers=headers, tablefmt="github" if renderer != "rst" else "rst"
+            )
+            docstring += options_table
+
+        # TODO output arguments
         return docstring

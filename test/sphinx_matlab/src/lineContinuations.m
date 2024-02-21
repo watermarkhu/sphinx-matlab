@@ -1,3 +1,6 @@
+% This is the documentation for this script.
+% spread over several lines.
+
 vector = [ ... comment
     1 ... commentary
     2 ...
