@@ -5,6 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Python: autodoc2",
             "type": "debugpy",
             "request": "launch",
@@ -19,6 +26,6 @@
             "program": "test/sphinx_matlab/debug.py",
             "console": "integratedTerminal",
             "justMyCode": false
-        }
+        },
     ]
 }

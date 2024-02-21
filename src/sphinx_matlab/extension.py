@@ -51,7 +51,7 @@ def create_namespace(app: Sphinx) -> None:
     workspace.init_namespace(qualified_path)
     app.env.workspace = workspace
 
-    node = app.env.workspace.find_symbol("argumentValidation")
-    func = get_matobject(node)
-    print(func.get_doc(show_arguments=True, show_options_table=True, renderer="md"))
+    node = app.env.workspace.find_symbol("Account")
+    obj = get_matobject(node)
+    print(obj.doc)
     return

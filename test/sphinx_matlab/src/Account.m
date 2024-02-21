@@ -1,6 +1,6 @@
 classdef Account < user.handle & BaseAccount % Models a bank account
     % Some properties
-    properties
+    properties (Hidden=true)
         Value
     end
     % Some methods

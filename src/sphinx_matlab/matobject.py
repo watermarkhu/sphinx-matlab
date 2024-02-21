@@ -1,3 +1,4 @@
+from abc import ABC
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import ClassVar, Protocol
@@ -5,6 +6,8 @@ from typing import ClassVar, Protocol
 from matlab_ns.namespace_node import NamespaceNode, NamespaceNodeType
 from tabulate import tabulate
 from textmate_grammar.elements import ContentElement
+
+from .attributes import ArgumentAttributes, ClassdefAttributes, PropertyAttributes
 
 
 class MatObject(Protocol):
@@ -33,6 +36,8 @@ def get_matobject(node: NamespaceNode) -> MatObject | None:
             return Function(node)
         case NamespaceNodeType.SCRIPT:
             return Script(node)
+        case NamespaceNodeType.CLASS:
+            return Classdef(node)
         case _:
             return None
 
@@ -54,6 +59,7 @@ class Script(MatObject):
     def __init__(self, node: NamespaceNode, **kwargs) -> None:
         self.validate_token(node._element)
         self.node = node
+        self.element = node._element
 
         docstring_lines: list[str] = []
         for function_item, _ in node._element.find(
@@ -86,39 +92,28 @@ class Script(MatObject):
         self.doc = parse_comment_docstring(docstring_lines)
 
 
-@dataclass
-class ArgumentAttributes:
-    Output: bool = False
-    Repeating: bool = False
-
-
-@dataclass
-class PropertyAttributes:
-    hidden: bool = False
-
-
 class Property(MatObject):
     _textmate_token = "meta.assignment.definition.property.matlab"
 
     def __init__(
         self,
-        node: NamespaceNode,
+        element: ContentElement,
         attributes: PropertyAttributes | ArgumentAttributes,
         docstring_lines: list[str] | None = None,
         **kwargs,
     ) -> None:
-        self.validate_token(node._element)
-        self.node = node
+        self.validate_token(element)
+        self.element = element
         self._attributes = attributes
 
-        self.name: str = node._element.begin[0].content
+        self.name: str = element.begin[0].content
         self.size: list[str] = []
         self.type: str = ""
         self.validators: list[str] = []
         self.default: str = ""
 
-        if node._element.end:
-            default_elements = node._element.findall(
+        if element.end:
+            default_elements = element.findall(
                 "*",
                 stop_tokens=[
                     "comment.line.percentage.matlab",
@@ -134,7 +129,7 @@ class Property(MatObject):
             ):
                 self.default = "".join([el.content for el, _ in default_elements[1:]])
 
-            doc_elements = node._element.findall("comment.line.percentage.matlab", attribute="end")
+            doc_elements = element.findall("comment.line.percentage.matlab", attribute="end")
             lines = [el.content[1:] for el, _ in doc_elements]
             if docstring_lines:
                 lines += [""] + docstring_lines
@@ -143,7 +138,7 @@ class Property(MatObject):
         else:
             self.doc = parse_comment_docstring(docstring_lines)
 
-        for expression, _ in node._element.find(
+        for expression, _ in element.find(
             [
                 "storage.type.matlab",
                 "meta.parens.size.matlab",
@@ -165,10 +160,11 @@ class Function(MatObject):
     def __init__(self, node: NamespaceNode) -> None:
         self.validate_token(node._element)
         self.node = node
+        self.element = node._element
 
-        self.input: OrderedDict[Property | str] = OrderedDict()
-        self.options: dict[Property | str] = dict()
-        self.output: OrderedDict[Property | str] = OrderedDict()
+        self.input: OrderedDict[str, Property | str] = OrderedDict()
+        self.options: dict[str, Property | str] = dict()
+        self.output: OrderedDict[str, Property | str] = OrderedDict()
 
         docstring_lines: list[str] = []
 
@@ -306,3 +302,32 @@ class Function(MatObject):
 
         # TODO output arguments
         return docstring
+
+
+class Classdef(MatObject):
+    _textmate_token = "meta.class.matlab"
+
+    def __init__(self, node: NamespaceNode) -> None:
+        self.validate_token(node._element)
+        self.node = node
+
+        self.attributes = None
+        self.enumeration: str = ""
+        self.methods: dict[str, Function] = dict()
+        self.properties: dict[str, Property] = dict()
+
+        docstring_lines: list[str] = []
+
+        for class_item, _ in node._element.find(
+            [
+                "meta.class.declaration.matlab",
+                "comment.line.percentage.matlab",
+                "comment.block.percentage.matlab",
+                "comment.line.double-percentage.matlab",
+                "meta.properties.matlab",
+                "meta.methods.matlab",
+                "meta.enum.matlab"
+            ],
+            verbosity=1,
+        ):
+            return
