@@ -1,12 +1,17 @@
 classdef Account < user.handle & BaseAccount % Models a bank account
-    % Some properties
-    properties (Hidden=true)
+    % An account
+    %
+    % This is the class docstring
+    % Something something
+
+    properties (Access=private)
         Value
     end
     % Some methods
     methods % A comment
         % Object constructor
         function obj = Account(value)
+            % Constructor docstring
             obj.Value = value;
         end
         function obj = BasicClass(val)

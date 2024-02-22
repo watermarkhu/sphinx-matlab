@@ -5,14 +5,20 @@ from typing import ClassVar, Protocol
 
 from matlab_ns.namespace_node import NamespaceNode, NamespaceNodeType
 from tabulate import tabulate
-from textmate_grammar.elements import ContentElement
+from textmate_grammar.elements import ContentBlockElement, ContentElement
 
 from .attributes import ArgumentAttributes, ClassdefAttributes, PropertyAttributes
+
+_COMMENT_TOKENS = [
+    "comment.line.percentage.matlab",
+    "comment.block.percentage.matlab",
+    "comment.line.double-percentage.matlab",
+]
 
 
 class MatObject(Protocol):
     doc: ClassVar[str]
-    _textmate_token = ""
+    _textmate_token: str = ""
 
     def validate_token(self, element: ContentElement) -> None:
         if self._textmate_token and self._textmate_token != element.token:
@@ -42,7 +48,24 @@ def get_matobject(node: NamespaceNode) -> MatObject | None:
             return None
 
 
-def parse_comment_docstring(lines: list[str]) -> str:
+def _append_comment(item: ContentElement, docstring_lines: list[str]) -> list[str]:
+    docstring_lines.append(item.content[item.content.index("%") + 1 :])
+    return docstring_lines
+
+
+def _append_section_comment(item: ContentElement, docstring_lines: list[str]) -> list[str]:
+    docstring_lines.append(item.content[item.content.index("%%") + 2 :])
+    return docstring_lines
+
+
+def _append_block_comment(item: ContentElement) -> list[str]:
+    bracket = item.content.index("%{") + 2
+    begin = item.content[bracket:].index("\n") + bracket + 1
+    docstring_lines = item.content[begin : item.content.index("%}")].split("\n")
+    return docstring_lines
+
+
+def _parse_comment_docstring(lines: list[str]) -> str:
     if not lines:
         return ""
     padding = [len(line) - len(line.lstrip()) for line in lines]
@@ -62,23 +85,11 @@ class Script(MatObject):
         self.element = node._element
 
         docstring_lines: list[str] = []
-        for function_item, _ in node._element.find(
-            [
-                "comment.line.percentage.matlab",
-                "comment.line.double-percentage.matlab",
-                "comment.block.percentage.matlab",
-            ],
-            stop_tokens="*",
-            verbosity=1,
-        ):
+        for function_item, _ in node._element.find(_COMMENT_TOKENS, stop_tokens="*", depth=1):
             if function_item.token == "comment.line.percentage.matlab":
-                docstring_lines.append(
-                    function_item.content[function_item.content.index("%") + 1 :]
-                )
+                _append_comment(function_item, docstring_lines)
             elif function_item.token == "comment.line.double-percentage.matlab":
-                docstring_lines.append(
-                    function_item.content[function_item.content.index("%%") + 2 :]
-                )
+                _append_section_comment(function_item, docstring_lines)
             else:
                 # Block comments will take precedence over single % comments
 
@@ -89,7 +100,7 @@ class Script(MatObject):
                 ].split("\n")
                 break
 
-        self.doc = parse_comment_docstring(docstring_lines)
+        self.doc = _parse_comment_docstring(docstring_lines)
 
 
 class Property(MatObject):
@@ -97,11 +108,14 @@ class Property(MatObject):
 
     def __init__(
         self,
-        element: ContentElement,
+        element: ContentBlockElement,
         attributes: PropertyAttributes | ArgumentAttributes,
         docstring_lines: list[str] | None = None,
         **kwargs,
     ) -> None:
+        if docstring_lines is None:
+            docstring_lines = []
+
         self.validate_token(element)
         self.element = element
         self._attributes = attributes
@@ -115,13 +129,9 @@ class Property(MatObject):
         if element.end:
             default_elements = element.findall(
                 "*",
-                stop_tokens=[
-                    "comment.line.percentage.matlab",
-                    "comment.block.percentage.matlab",
-                    "comment.line.double-percentage.matlab",
-                ],
+                stop_tokens=_COMMENT_TOKENS,
                 attribute="end",
-                verbosity=1,
+                depth=1,
             )
             if (
                 default_elements
@@ -134,9 +144,9 @@ class Property(MatObject):
             if docstring_lines:
                 lines += [""] + docstring_lines
 
-            self.doc = parse_comment_docstring(lines)
+            self.doc = _parse_comment_docstring(lines)
         else:
-            self.doc = parse_comment_docstring(docstring_lines)
+            self.doc = _parse_comment_docstring(docstring_lines)
 
         for expression, _ in element.find(
             [
@@ -144,7 +154,7 @@ class Property(MatObject):
                 "meta.parens.size.matlab",
                 "meta.block.validation.matlab",
             ],
-            verbosity=1,
+            depth=1,
         ):
             if expression.token == "storage.type.matlab":
                 self.type = expression.content
@@ -163,7 +173,7 @@ class Function(MatObject):
         self.element = node._element
 
         self.input: OrderedDict[str, Property | str] = OrderedDict()
-        self.options: dict[str, Property | str] = dict()
+        self.options: dict[str, Property] = dict()
         self.output: OrderedDict[str, Property | str] = OrderedDict()
 
         docstring_lines: list[str] = []
@@ -171,12 +181,10 @@ class Function(MatObject):
         for function_item, _ in node._element.find(
             [
                 "meta.function.declaration.matlab",
-                "comment.line.percentage.matlab",
-                "comment.block.percentage.matlab",
-                "comment.line.double-percentage.matlab",
                 "meta.arguments.matlab",
-            ],
-            verbosity=1,
+            ]
+            + _COMMENT_TOKENS,
+            depth=1,
         ):
             if function_item.token == "meta.function.declaration.matlab":
                 # Get input and output arguments from function declaration
@@ -190,23 +198,13 @@ class Function(MatObject):
                         self.output[variable.content] = variable.content
 
             elif function_item.token == "comment.block.percentage.matlab":
-                # Block comments will take precedence over single % comments
+                docstring_lines = _append_block_comment(function_item)
 
-                bracket = function_item.content.index("%{") + 2
-                begin = function_item.content[bracket:].index("\n") + bracket + 1
-                docstring_lines = function_item.content[
-                    begin : function_item.content.index("%}")
-                ].split("\n")
+            elif function_item.token == "comment.line.percentage.matlab":
+                _append_comment(function_item, docstring_lines)
 
-            elif function_item.token in ["comment.line.percentage.matlab"]:
-                docstring_lines.append(
-                    function_item.content[function_item.content.index("%") + 1 :]
-                )
-
-            elif function_item.token in ["comment.line.double-percentage.matlab"]:
-                docstring_lines.append(
-                    function_item.content[function_item.content.index("%%") + 2 :]
-                )
+            elif function_item.token == "comment.line.double-percentage.matlab":
+                _append_section_comment(function_item, docstring_lines)
 
             else:  # meta.arguments.matlab
                 modifiers = {
@@ -217,48 +215,48 @@ class Function(MatObject):
                 }
                 attributes = ArgumentAttributes(**modifiers)
 
-                argument, argument_doc_parts = None, []
+                arg = None
+                arg_doc_parts: list[str] = []
+
                 for arg_item, _ in function_item.find(
                     [
                         "meta.assignment.definition.property.matlab",
                         "comment.line.percentage.matlab",
                     ],
-                    verbosity=1,
+                    depth=1,
                 ):
                     if arg_item.token == "meta.assignment.definition.property.matlab":
-                        if argument:
-                            self._add_argument(argument, attributes, argument_doc_parts)
+                        if arg:
+                            self._add_argument(arg, attributes, arg_doc_parts)
 
-                        argument_doc_parts = []
-                        argument = arg_item
+                        arg_doc_parts = []
+                        arg = arg_item
                     else:
-                        argument_doc_parts.append(
-                            arg_item.content[arg_item.content.index("%") + 1 :]
-                        )
+                        arg_doc_parts.append(arg_item.content[arg_item.content.index("%") + 1 :])
                 else:
-                    if argument:
-                        self._add_argument(argument, attributes, argument_doc_parts)
-                        argument_doc_parts = []
+                    if arg:
+                        self._add_argument(arg, attributes, arg_doc_parts)
+                        arg_doc_parts = []
 
-        self.doc = parse_comment_docstring(docstring_lines)
+        self.doc = _parse_comment_docstring(docstring_lines)
 
     def _add_argument(
         self,
-        arg_item: ContentElement,
-        attributes: ArgumentAttributes | PropertyAttributes,
+        arg_item: ContentBlockElement,
+        attributes: ArgumentAttributes,
         docstring_lines: list[str],
     ):
-        argument = Property(arg_item, attributes=attributes, docstring_lines=docstring_lines)
+        arg = Property(arg_item, attributes=attributes, docstring_lines=docstring_lines)
 
         if attributes.Output:
-            self.output[argument.name] = argument
+            self.output[arg.name] = arg
         else:
-            if "." in argument.name:
-                self.input.pop(argument.name.split(".")[0], None)
-                argument.name = argument.name.split(".")[1]
-                self.options[argument.name] = argument
+            if "." in arg.name:
+                self.input.pop(arg.name.split(".")[0], None)
+                arg.name = arg.name.split(".")[1]
+                self.options[arg.name] = arg
             else:
-                self.input[argument.name] = argument
+                self.input[arg.name] = arg
 
     def get_doc(
         self, show_arguments: bool = False, show_options_table: bool = False, renderer: str = "md"
@@ -271,17 +269,17 @@ class Function(MatObject):
 
         if self.input:
             docstring += "\n"
-        for argument in self.input.values():
-            if isinstance(argument, str):
-                docstring += f"\n:param {argument}:"
+        for arg in self.input.values():
+            if isinstance(arg, str):
+                docstring += f"\n:param {arg}:"
             else:
-                doc = argument.doc.replace("\n", " ")
+                doc = arg.doc.replace("\n", " ")
                 docstring += "\n:param "
-                if argument.type:
-                    docstring += argument.type
-                docstring += f" {argument.name}: {doc}"
-                if argument.default:
-                    docstring += f" Defaults to {codetick}{argument.default}{codetick}"
+                if arg.type:
+                    docstring += arg.type
+                docstring += f" {arg.name}: {doc}"
+                if arg.default:
+                    docstring += f" Defaults to {codetick}{arg.default}{codetick}"
 
         if show_options_table and self.options:
             docstring += "\n\n"
@@ -292,9 +290,9 @@ class Function(MatObject):
             )
             table = []
             headers = ["name", "type", "doc", "default"]
-            for name, argument in self.options.items():
-                doc = argument.doc.replace("\n", " ")
-                table.append([name, argument.type, doc, f"{codetick}{argument.default}{codetick}"])
+            for name, arg in self.options.items():
+                doc = arg.doc.replace("\n", " ")
+                table.append([name, arg.type, doc, f"{codetick}{arg.default}{codetick}"])
             options_table = tabulate(
                 table, headers=headers, tablefmt="github" if renderer != "rst" else "rst"
             )
@@ -311,6 +309,8 @@ class Classdef(MatObject):
         self.validate_token(node._element)
         self.node = node
 
+        self.local_name: str = ""
+        self.ancestors: list[str] = []
         self.attributes = None
         self.enumeration: str = ""
         self.methods: dict[str, Function] = dict()
@@ -321,13 +321,83 @@ class Classdef(MatObject):
         for class_item, _ in node._element.find(
             [
                 "meta.class.declaration.matlab",
-                "comment.line.percentage.matlab",
-                "comment.block.percentage.matlab",
-                "comment.line.double-percentage.matlab",
                 "meta.properties.matlab",
-                "meta.methods.matlab",
-                "meta.enum.matlab"
-            ],
-            verbosity=1,
+                # "meta.methods.matlab",
+                "meta.enum.matlab",
+            ]
+            + _COMMENT_TOKENS,
+            depth=1,
         ):
-            return
+            if class_item.token == "meta.class.declaration.matlab":
+                for declation_item, _ in class_item.find("*", depth=1):
+                    if declation_item.token == "entity.name.type.class.matlab":
+                        self.local_name = declation_item.content
+                    elif declation_item.token == "meta.inherited-class.matlab":
+                        self.ancestors.append(declation_item.content)
+                    elif declation_item.token == "punctuation.definition.comment.matlab":
+                        docstring_lines.append(
+                            class_item.content[class_item.content.index("%") + 1 :]
+                        )
+            elif class_item.token == "comment.block.percentage.matlab":
+                docstring_lines = _append_block_comment(class_item)
+
+            elif class_item.token == "comment.line.percentage.matlab":
+                _append_comment(class_item, docstring_lines)
+
+            elif class_item.token == "comment.line.double-percentage.matlab":
+                _append_section_comment(class_item, docstring_lines)
+
+            elif class_item.token == "meta.properties.matlab":
+                modifiers = {}
+                current_modifier, current_value = "", True
+                for modifier_item, _ in class_item.findall("*", attribute="begin"):
+                    if modifier_item.token == "storage.modifier.properties.matlab":
+                        if current_modifier:
+                            modifiers[current_modifier], current_value = current_value, True
+                        current_modifier = modifier_item.content
+                    elif modifier_item.token == "keyword.operator.assignment.matlab":
+                        current_value = ""
+                    elif (
+                        modifier_item.token
+                        not in ["keyword.control.properties.matlab"] + _COMMENT_TOKENS
+                    ):
+                        current_value += modifier_item.content
+                else:
+                    if current_modifier:
+                        modifiers[current_modifier], current_value = current_value, True
+
+                attributes = PropertyAttributes.from_dict(modifiers)
+
+                prop = None
+                prop_doc_parts: list[str] = []
+                for prop_item, _ in class_item.find(
+                    [
+                        "meta.assignment.definition.property.matlab",
+                        "comment.line.percentage.matlab",
+                    ],
+                    depth=1,
+                ):
+                    if prop_item.token == "meta.assignment.definition.property.matlab":
+                        if prop:
+                            self._add_prop(prop, attributes, prop_doc_parts)
+
+                        prop_doc_parts = []
+                        prop = prop_item
+                    else:
+                        prop_doc_parts.append(prop_item.content[prop_item.content.index("%") + 1 :])
+                else:
+                    if prop:
+                        self._add_prop(prop, attributes, prop_doc_parts)
+                        prop_doc_parts = []
+
+        self.doc = _parse_comment_docstring(docstring_lines)
+        pass
+
+    def _add_prop(
+        self,
+        prop_item: ContentBlockElement,
+        attributes: ArgumentAttributes | PropertyAttributes,
+        docstring_lines: list[str],
+    ):
+        prop = Property(prop_item, attributes=attributes, docstring_lines=docstring_lines)
+        self.properties[prop.name] = prop

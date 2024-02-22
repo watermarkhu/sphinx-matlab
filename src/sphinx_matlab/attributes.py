@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 
-@dataclass
 class Attributes:
     @classmethod
     def from_dict(cls, settings: dict):
@@ -21,6 +20,7 @@ class Attributes:
         return cls(**settings)
 
 
+@dataclass
 class ArgumentAttributes(Attributes):
     """Argument block attributes
     https://mathworks.com/help/matlab/ref/arguments.html
@@ -30,6 +30,7 @@ class ArgumentAttributes(Attributes):
     Repeating: bool = False
 
 
+@dataclass
 class PropertyAttributes(Attributes):
     """Class property attributes
     https://mathworks.com/help/matlab/matlab_oop/property-attributes.html
