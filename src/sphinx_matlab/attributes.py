@@ -51,6 +51,22 @@ class PropertyAttributes(Attributes):
     Transient: bool = False
 
 
+@dataclass
+class MethodAttributes(Attributes):
+    """Class method attributes
+    https://mathworks.com/help/matlab/matlab_oop/method-attributes.html
+    """
+
+    Abstract: bool = False
+    Access: str = "public"
+    Hidden: bool = False
+    Sealed: bool = False
+    Static: bool = False
+
+    # TODO There may be other framework attributes
+
+
+@dataclass
 class ClassdefAttributes(Attributes):
     """Class attributes
     https://mathworks.com/help/matlab/matlab_oop/class-attributes.html

@@ -7,7 +7,7 @@ from matlab_ns.namespace_node import NamespaceNode, NamespaceNodeType
 from tabulate import tabulate
 from textmate_grammar.elements import ContentBlockElement, ContentElement
 
-from .attributes import ArgumentAttributes, ClassdefAttributes, PropertyAttributes
+from .attributes import ArgumentAttributes, ClassdefAttributes, MethodAttributes, PropertyAttributes
 
 _COMMENT_TOKENS = [
     "comment.line.percentage.matlab",
@@ -171,14 +171,16 @@ class Function(MatObject):
         self.validate_token(node._element)
         self.node = node
         self.element = node._element
+        self._process_elements(node._element)
 
+    def _process_elements(self, element: ContentBlockElement):
         self.input: OrderedDict[str, Property | str] = OrderedDict()
         self.options: dict[str, Property] = dict()
         self.output: OrderedDict[str, Property | str] = OrderedDict()
 
         docstring_lines: list[str] = []
 
-        for function_item, _ in node._element.find(
+        for function_item, _ in element.find(
             [
                 "meta.function.declaration.matlab",
                 "meta.arguments.matlab",
@@ -190,9 +192,15 @@ class Function(MatObject):
                 # Get input and output arguments from function declaration
 
                 for variable, _ in function_item.find(
-                    ["variable.parameter.output.matlab", "variable.parameter.input.matlab"]
+                    [
+                        "entity.name.function.matlab",
+                        "variable.parameter.output.matlab",
+                        "variable.parameter.input.matlab",
+                    ]
                 ):
-                    if variable.token == "variable.parameter.input.matlab":
+                    if variable.token == "entity.name.function.matlab":
+                        self.local_name = variable.content
+                    elif variable.token == "variable.parameter.input.matlab":
                         self.input[variable.content] = variable.content
                     else:
                         self.output[variable.content] = variable.content
@@ -291,8 +299,10 @@ class Function(MatObject):
             table = []
             headers = ["name", "type", "doc", "default"]
             for name, arg in self.options.items():
-                doc = arg.doc.replace("\n", " ")
-                table.append([name, arg.type, doc, f"{codetick}{arg.default}{codetick}"])
+                arg_doc = arg.doc.replace("\n", " ") if arg.doc else None
+                arg_type = arg.type if arg.type else None
+                arg_default = f"{codetick}{arg.default}{codetick}" if arg.default else None
+                table.append([name, arg_type, arg_doc, arg_default])
             options_table = tabulate(
                 table, headers=headers, tablefmt="github" if renderer != "rst" else "rst"
             )
@@ -300,6 +310,20 @@ class Function(MatObject):
 
         # TODO output arguments
         return docstring
+
+
+class Method(Function):
+    def __init__(
+        self, element: ContentBlockElement, attributes: MethodAttributes, classdef: "Classdef"
+    ):
+        self.validate_token(element)
+        self.element = element
+        self.attributes = attributes
+        self.classdef = classdef
+        self._process_elements(element)
+
+        if self.local_name != classdef.local_name or not attributes.Static:
+            self.input.popitem(last=False)
 
 
 class Classdef(MatObject):
@@ -312,8 +336,8 @@ class Classdef(MatObject):
         self.local_name: str = ""
         self.ancestors: list[str] = []
         self.attributes = None
-        self.enumeration: str = ""
-        self.methods: dict[str, Function] = dict()
+        self.enumeration: dict[str, (str, str)] = dict()
+        self.methods: dict[str, Method] = dict()
         self.properties: dict[str, Property] = dict()
 
         docstring_lines: list[str] = []
@@ -322,8 +346,8 @@ class Classdef(MatObject):
             [
                 "meta.class.declaration.matlab",
                 "meta.properties.matlab",
-                # "meta.methods.matlab",
                 "meta.enum.matlab",
+                "meta.methods.matlab",
             ]
             + _COMMENT_TOKENS,
             depth=1,
@@ -364,7 +388,7 @@ class Classdef(MatObject):
                         current_value += modifier_item.content
                 else:
                     if current_modifier:
-                        modifiers[current_modifier], current_value = current_value, True
+                        modifiers[current_modifier] = current_value
 
                 attributes = PropertyAttributes.from_dict(modifiers)
 
@@ -390,8 +414,82 @@ class Classdef(MatObject):
                         self._add_prop(prop, attributes, prop_doc_parts)
                         prop_doc_parts = []
 
+            elif class_item.token == "meta.enum.matlab":
+                enum_doc_parts: list[str] = []
+                enum_name: str = ""
+                enum_value: str = ""
+                for enum_item, _ in class_item.find(
+                    [
+                        "meta.assignment.definition.enummember.matlab",
+                        "meta.parens.matlab",
+                        "comment.line.percentage.matlab",
+                    ],
+                    attribute="children",
+                ):
+                    if enum_item.token == "meta.assignment.definition.enummember.matlab":
+                        if enum_name:
+                            enum_doc = _parse_comment_docstring(enum_doc_parts)
+                            self.enumeration[enum_name] = (enum_value, enum_doc)
+                            enum_doc_parts, enum_value = [], ""
+                        enum_name = next(enum_item.find("variable.other.enummember.matlab"))[
+                            0
+                        ].content
+
+                    elif enum_item.token == "meta.parens.matlab":
+                        enum_value = enum_item.content[1:-1]
+                    else:
+                        _append_comment(enum_item, enum_doc_parts)
+                else:
+                    if enum_name:
+                        enum_doc = _parse_comment_docstring(enum_doc_parts)
+                        self.enumeration[enum_name] = (enum_value, enum_doc)
+                        enum_doc_parts, enum_value = [], ""
+
+            else:
+                modifiers = {}
+                current_modifier, current_value = "", True
+                for modifier_item, _ in class_item.findall(
+                    ["storage.modifier.methods.matlab", "storage.modifier.access.matlab"],
+                    attribute="begin",
+                ):
+                    if modifier_item.token == "storage.modifier.methods.matlab":
+                        if current_modifier:
+                            modifiers[current_modifier], current_value = current_value, True
+                        current_modifier = modifier_item.content
+                    else:
+                        current_value = modifier_item.content
+                else:
+                    if current_modifier:
+                        modifiers[current_modifier] = current_value
+
+                attributes = MethodAttributes.from_dict(modifiers)
+
+                for method_item, _ in class_item.find("meta.function.matlab", depth=1):
+                    method = Method(method_item, attributes, self)
+                    self.methods[method.local_name] = method
+
         self.doc = _parse_comment_docstring(docstring_lines)
-        pass
+
+    def get_doc(self, renderer: str = "md") -> str:
+        codetick = "``" if renderer == "rst" else "`"
+
+        docstring = self.doc
+
+        if self.enumeration:
+            docstring += "\n\n"
+            docstring += "Enumeration\n-----------\n" if renderer == "rst" else "## Enumeration\n"
+            table = []
+            headers = ["name", "value", "doc"]
+            for enum_name, (value, doc) in self.enumeration.items():
+                enum_value = f"{codetick}{value}{codetick}" if value else None
+                enum_doc = doc if doc else None
+                table.append([enum_name, enum_value, enum_doc])
+            enum_table = tabulate(
+                table, headers=headers, tablefmt="github" if renderer != "rst" else "rst"
+            )
+            docstring += enum_table
+
+        return docstring
 
     def _add_prop(
         self,

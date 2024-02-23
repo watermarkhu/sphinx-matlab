@@ -8,7 +8,7 @@ classdef Account < user.handle & BaseAccount % Models a bank account
         Value
     end
     % Some methods
-    methods % A comment
+    methods (Access=private)
         % Object constructor
         function obj = Account(value)
             % Constructor docstring
