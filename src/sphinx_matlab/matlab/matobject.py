@@ -1,12 +1,12 @@
 from collections import OrderedDict
 from typing import Protocol
 
-from matlab_ns.namespace_node import NamespaceNode, NamespaceNodeType
+from matlab_ns.namespace_node import NamespaceNode
 from textmate_grammar.elements import ContentBlockElement, ContentElement
 
+from ..config import Config
 from .attributes import ArgumentAttributes, ClassdefAttributes, MethodAttributes, PropertyAttributes
-from .config import Config
-from .util_docstring import (
+from .utils_docstring import (
     append_block_comment,
     append_comment,
     append_enum_table,
@@ -31,29 +31,6 @@ class MatObject(Protocol):
 
     def doc(self, config: Config) -> str:
         ...
-
-
-def get_matobject(node: NamespaceNode) -> MatObject | None:
-    """Returns the appropiate MATLAB object based on the NamespaceNode
-
-    Args:
-        node (NamespaceNode): The matlab-ns node object
-
-    Returns:
-        MatObject | None: The
-    """
-    if node._element is None:
-        return None
-
-    match node.node_type:
-        case NamespaceNodeType.FUNCTION:
-            return Function(node)
-        case NamespaceNodeType.SCRIPT:
-            return Script(node)
-        case NamespaceNodeType.CLASS:
-            return Classdef(node)
-        case _:
-            return None
 
 
 class Script(MatObject):

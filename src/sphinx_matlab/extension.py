@@ -6,7 +6,7 @@ from sphinx.application import Sphinx
 
 from . import __version__
 from .config import CONFIG_PREFIX, Config
-from .matobject import get_matobject
+from .matlab import get_matobject
 from .utils import WarningSubtypes, load_config, warn_sphinx
 
 
