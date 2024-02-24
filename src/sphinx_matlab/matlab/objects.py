@@ -6,7 +6,7 @@ from textmate_grammar.elements import ContentBlockElement, ContentElement
 
 from ..config import Config
 from .attributes import ArgumentAttributes, ClassdefAttributes, MethodAttributes, PropertyAttributes
-from .utils_docstring import (
+from .utils import (
     append_block_comment,
     append_comment,
     append_enum_table,

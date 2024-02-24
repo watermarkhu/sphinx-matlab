@@ -1,6 +1,6 @@
 from matlab_ns.namespace_node import NamespaceNode, NamespaceNodeType
 
-from .matobject import Classdef, Function, MatObject, Script
+from .objects import Classdef, Function, MatObject, Script
 
 
 def get_matobject(node: NamespaceNode) -> MatObject | None:

@@ -4,7 +4,7 @@ from tabulate import tabulate
 from textmate_grammar.elements import ContentElement
 
 if typing.TYPE_CHECKING:
-    from .matobject import Property
+    from .objects import Property
 
 
 def _codetick(renderer: str = "rst") -> str:
