@@ -1,13 +1,19 @@
-from abc import ABC
 from collections import OrderedDict
-from dataclasses import dataclass
-from typing import ClassVar, Protocol
+from typing import Protocol
 
 from matlab_ns.namespace_node import NamespaceNode, NamespaceNodeType
-from tabulate import tabulate
 from textmate_grammar.elements import ContentBlockElement, ContentElement
 
 from .attributes import ArgumentAttributes, ClassdefAttributes, MethodAttributes, PropertyAttributes
+from .config import Config
+from .util_docstring import (
+    append_block_comment,
+    append_comment,
+    append_enum_table,
+    append_section_comment,
+    append_validation_table,
+    parse_comment_docstring,
+)
 
 _COMMENT_TOKENS = [
     "comment.line.percentage.matlab",
@@ -17,12 +23,14 @@ _COMMENT_TOKENS = [
 
 
 class MatObject(Protocol):
-    doc: ClassVar[str]
     _textmate_token: str = ""
 
     def validate_token(self, element: ContentElement) -> None:
         if self._textmate_token and self._textmate_token != element.token:
             raise ValueError
+
+    def doc(self, config: Config) -> str:
+        ...
 
 
 def get_matobject(node: NamespaceNode) -> MatObject | None:
@@ -48,34 +56,6 @@ def get_matobject(node: NamespaceNode) -> MatObject | None:
             return None
 
 
-def _append_comment(item: ContentElement, docstring_lines: list[str]) -> list[str]:
-    docstring_lines.append(item.content[item.content.index("%") + 1 :])
-    return docstring_lines
-
-
-def _append_section_comment(item: ContentElement, docstring_lines: list[str]) -> list[str]:
-    docstring_lines.append(item.content[item.content.index("%%") + 2 :])
-    return docstring_lines
-
-
-def _append_block_comment(item: ContentElement) -> list[str]:
-    bracket = item.content.index("%{") + 2
-    begin = item.content[bracket:].index("\n") + bracket + 1
-    docstring_lines = item.content[begin : item.content.index("%}")].split("\n")
-    return docstring_lines
-
-
-def _parse_comment_docstring(lines: list[str]) -> str:
-    if not lines:
-        return ""
-    padding = [len(line) - len(line.lstrip()) for line in lines]
-    indent = min([pad for pad, line in zip(padding, lines) if not (line.isspace() or not line)])
-    docstring = ""
-    for line in [line[indent:] if len(line) >= pad else line for line, pad in zip(lines, padding)]:
-        docstring += "\n" if line.isspace() or not line else line.rstrip() + " "
-    return docstring.strip()
-
-
 class Script(MatObject):
     _textmate_token = ""
 
@@ -87,9 +67,9 @@ class Script(MatObject):
         docstring_lines: list[str] = []
         for function_item, _ in node._element.find(_COMMENT_TOKENS, stop_tokens="*", depth=1):
             if function_item.token == "comment.line.percentage.matlab":
-                _append_comment(function_item, docstring_lines)
+                append_comment(function_item, docstring_lines)
             elif function_item.token == "comment.line.double-percentage.matlab":
-                _append_section_comment(function_item, docstring_lines)
+                append_section_comment(function_item, docstring_lines)
             else:
                 # Block comments will take precedence over single % comments
 
@@ -100,7 +80,10 @@ class Script(MatObject):
                 ].split("\n")
                 break
 
-        self.doc = _parse_comment_docstring(docstring_lines)
+        self._doc = parse_comment_docstring(docstring_lines)
+
+    def doc(self, *args) -> str:
+        return self._doc
 
 
 class Property(MatObject):
@@ -144,9 +127,9 @@ class Property(MatObject):
             if docstring_lines:
                 lines += [""] + docstring_lines
 
-            self.doc = _parse_comment_docstring(lines)
+            self._doc = parse_comment_docstring(lines)
         else:
-            self.doc = _parse_comment_docstring(docstring_lines)
+            self._doc = parse_comment_docstring(docstring_lines)
 
         for expression, _ in element.find(
             [
@@ -162,6 +145,9 @@ class Property(MatObject):
                 self.size = expression.content.split(",")
             else:
                 self.validators = [validator.content for validator in expression.children]
+
+    def doc(self, *args) -> str:
+        return self._doc
 
 
 class Function(MatObject):
@@ -206,13 +192,13 @@ class Function(MatObject):
                         self.output[variable.content] = variable.content
 
             elif function_item.token == "comment.block.percentage.matlab":
-                docstring_lines = _append_block_comment(function_item)
+                docstring_lines = append_block_comment(function_item)
 
             elif function_item.token == "comment.line.percentage.matlab":
-                _append_comment(function_item, docstring_lines)
+                append_comment(function_item, docstring_lines)
 
             elif function_item.token == "comment.line.double-percentage.matlab":
-                _append_section_comment(function_item, docstring_lines)
+                append_section_comment(function_item, docstring_lines)
 
             else:  # meta.arguments.matlab
                 modifiers = {
@@ -246,7 +232,7 @@ class Function(MatObject):
                         self._add_argument(arg, attributes, arg_doc_parts)
                         arg_doc_parts = []
 
-        self.doc = _parse_comment_docstring(docstring_lines)
+        self._doc = parse_comment_docstring(docstring_lines)
 
     def _add_argument(
         self,
@@ -266,13 +252,11 @@ class Function(MatObject):
             else:
                 self.input[arg.name] = arg
 
-    def get_doc(
-        self, show_arguments: bool = False, show_options_table: bool = False, renderer: str = "md"
-    ) -> str:
-        codetick = "``" if renderer == "rst" else "`"
+    def doc(self, config: Config) -> str:
+        codetick = "``" if config.render_plugin == "rst" else "`"
 
-        docstring = self.doc
-        if not show_arguments:
+        docstring = self._doc
+        if not config.argument_block_parameters:
             return docstring
 
         if self.input:
@@ -281,7 +265,7 @@ class Function(MatObject):
             if isinstance(arg, str):
                 docstring += f"\n:param {arg}:"
             else:
-                doc = arg.doc.replace("\n", " ")
+                doc = arg._doc.replace("\n", " ")
                 docstring += "\n:param "
                 if arg.type:
                     docstring += arg.type
@@ -289,24 +273,10 @@ class Function(MatObject):
                 if arg.default:
                     docstring += f" Defaults to {codetick}{arg.default}{codetick}"
 
-        if show_options_table and self.options:
-            docstring += "\n\n"
-            docstring += (
-                "Name-value pairs\n----------------\n"
-                if renderer == "rst"
-                else "## Name-value pairs\n"
+        if config.argument_options_table and self.options:
+            docstring = append_validation_table(
+                self.options, docstring, renderer=config.render_plugin, title="Name-value pairs"
             )
-            table = []
-            headers = ["name", "type", "doc", "default"]
-            for name, arg in self.options.items():
-                arg_doc = arg.doc.replace("\n", " ") if arg.doc else None
-                arg_type = arg.type if arg.type else None
-                arg_default = f"{codetick}{arg.default}{codetick}" if arg.default else None
-                table.append([name, arg_type, arg_doc, arg_default])
-            options_table = tabulate(
-                table, headers=headers, tablefmt="github" if renderer != "rst" else "rst"
-            )
-            docstring += options_table
 
         # TODO output arguments
         return docstring
@@ -335,7 +305,6 @@ class Classdef(MatObject):
 
         self.local_name: str = ""
         self.ancestors: list[str] = []
-        self.attributes = None
         self.enumeration: dict[str, (str, str)] = dict()
         self.methods: dict[str, Method] = dict()
         self.properties: dict[str, Property] = dict()
@@ -353,7 +322,40 @@ class Classdef(MatObject):
             depth=1,
         ):
             if class_item.token == "meta.class.declaration.matlab":
-                for declation_item, _ in class_item.find("*", depth=1):
+                modifiers = {}
+                current_modifier, current_value = "", True
+
+                for attribute_item, _ in class_item.find(
+                    "*",
+                    start_tokens="punctuation.section.parens.begin.matlab",
+                    stop_tokens="punctuation.section.parens.end.matlab",
+                    depth=1,
+                ):
+                    if attribute_item.token == "punctuation.section.parens.begin.matlab":
+                        continue
+                    elif attribute_item.token == "storage.modifier.class.matlab":
+                        current_modifier = attribute_item.content
+                    elif attribute_item.token == "keyword.operator.assignment.matlab":
+                        current_value = ""
+                    elif attribute_item.token == "punctuation.separator.modifier.comma.matlab":
+                        modifiers[current_modifier], current_value = current_value, True
+                    elif attribute_item.token not in _COMMENT_TOKENS:
+                        current_value += attribute_item.content
+                else:
+                    if current_modifier:
+                        modifiers[current_modifier] = current_value
+
+                self._attributes = ClassdefAttributes.from_dict(modifiers)
+
+                declation_tokens = [
+                    "entity.name.type.class.matlab",
+                    "meta.inherited-class.matlab",
+                    "punctuation.definition.comment.matlab",
+                ]
+
+                for declation_item, _ in class_item.find(
+                    declation_tokens, start_tokens=declation_tokens, depth=1
+                ):
                     if declation_item.token == "entity.name.type.class.matlab":
                         self.local_name = declation_item.content
                     elif declation_item.token == "meta.inherited-class.matlab":
@@ -363,28 +365,27 @@ class Classdef(MatObject):
                             class_item.content[class_item.content.index("%") + 1 :]
                         )
             elif class_item.token == "comment.block.percentage.matlab":
-                docstring_lines = _append_block_comment(class_item)
+                docstring_lines = append_block_comment(class_item)
 
             elif class_item.token == "comment.line.percentage.matlab":
-                _append_comment(class_item, docstring_lines)
+                append_comment(class_item, docstring_lines)
 
             elif class_item.token == "comment.line.double-percentage.matlab":
-                _append_section_comment(class_item, docstring_lines)
+                append_section_comment(class_item, docstring_lines)
 
             elif class_item.token == "meta.properties.matlab":
                 modifiers = {}
                 current_modifier, current_value = "", True
-                for modifier_item, _ in class_item.findall("*", attribute="begin"):
+                for modifier_item, _ in class_item.findall(
+                    "*", start_tokens="storage.modifier.properties.matlab", attribute="begin"
+                ):
                     if modifier_item.token == "storage.modifier.properties.matlab":
                         if current_modifier:
                             modifiers[current_modifier], current_value = current_value, True
                         current_modifier = modifier_item.content
                     elif modifier_item.token == "keyword.operator.assignment.matlab":
                         current_value = ""
-                    elif (
-                        modifier_item.token
-                        not in ["keyword.control.properties.matlab"] + _COMMENT_TOKENS
-                    ):
+                    elif modifier_item.token not in _COMMENT_TOKENS:
                         current_value += modifier_item.content
                 else:
                     if current_modifier:
@@ -428,7 +429,7 @@ class Classdef(MatObject):
                 ):
                     if enum_item.token == "meta.assignment.definition.enummember.matlab":
                         if enum_name:
-                            enum_doc = _parse_comment_docstring(enum_doc_parts)
+                            enum_doc = parse_comment_docstring(enum_doc_parts)
                             self.enumeration[enum_name] = (enum_value, enum_doc)
                             enum_doc_parts, enum_value = [], ""
                         enum_name = next(enum_item.find("variable.other.enummember.matlab"))[
@@ -436,12 +437,12 @@ class Classdef(MatObject):
                         ].content
 
                     elif enum_item.token == "meta.parens.matlab":
-                        enum_value = enum_item.content[1:-1]
+                        enum_value = enum_item.content
                     else:
-                        _append_comment(enum_item, enum_doc_parts)
+                        append_comment(enum_item, enum_doc_parts)
                 else:
                     if enum_name:
-                        enum_doc = _parse_comment_docstring(enum_doc_parts)
+                        enum_doc = parse_comment_docstring(enum_doc_parts)
                         self.enumeration[enum_name] = (enum_value, enum_doc)
                         enum_doc_parts, enum_value = [], ""
 
@@ -468,28 +469,7 @@ class Classdef(MatObject):
                     method = Method(method_item, attributes, self)
                     self.methods[method.local_name] = method
 
-        self.doc = _parse_comment_docstring(docstring_lines)
-
-    def get_doc(self, renderer: str = "md") -> str:
-        codetick = "``" if renderer == "rst" else "`"
-
-        docstring = self.doc
-
-        if self.enumeration:
-            docstring += "\n\n"
-            docstring += "Enumeration\n-----------\n" if renderer == "rst" else "## Enumeration\n"
-            table = []
-            headers = ["name", "value", "doc"]
-            for enum_name, (value, doc) in self.enumeration.items():
-                enum_value = f"{codetick}{value}{codetick}" if value else None
-                enum_doc = doc if doc else None
-                table.append([enum_name, enum_value, enum_doc])
-            enum_table = tabulate(
-                table, headers=headers, tablefmt="github" if renderer != "rst" else "rst"
-            )
-            docstring += enum_table
-
-        return docstring
+        self._doc = parse_comment_docstring(docstring_lines)
 
     def _add_prop(
         self,
@@ -499,3 +479,29 @@ class Classdef(MatObject):
     ):
         prop = Property(prop_item, attributes=attributes, docstring_lines=docstring_lines)
         self.properties[prop.name] = prop
+
+    def doc(self, config: Config) -> str:
+        docstring = self._doc
+        if config.class_docstring == "merge" and self.local_name in self.methods:
+            constructor_docstring = self.methods[self.local_name].doc(config)
+            if docstring and constructor_docstring:
+                docstring += "\n\n"
+            docstring += constructor_docstring
+
+        if self.enumeration:
+            docstring = append_enum_table(
+                self.enumeration, docstring, renderer=config.render_plugin
+            )
+
+        if config.class_properties_table:
+            public_properties = {
+                name: prop
+                for (name, prop) in self.properties.items()
+                if prop._attributes.Access == "public" or prop._attributes.GetAccess == "public"
+            }
+            if public_properties:
+                docstring = append_validation_table(
+                    public_properties, docstring, renderer=config.render_plugin, title="Properties"
+                )
+
+        return docstring

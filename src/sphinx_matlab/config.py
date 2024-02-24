@@ -121,12 +121,41 @@ class Config:
     docstring_parser_regexes: list[tuple[t.Pattern[str], str]] = dc.field(
         default_factory=list,
         metadata={
-            "help": "Match fully qualified names against regexes to use a specific parser. "
-            "The parser can be one of 'rst', 'myst', or the fully qualified name of a custom parser class. "
-            "The first match is used. ",
+            "help": (
+                "Match fully qualified names against regexes to use a specific parser. "
+                "The parser can be one of 'rst', 'myst', or the fully qualified name of a custom parser class. "
+                "The first match is used."
+            ),
             "sphinx_type": list,
             "sphinx_validate": _validate_list_tuple_regex_str,
             "doc_type": "list[tuple[str, str]]",
+            "category": "render",
+        },
+    )
+
+    argument_block_parameters: bool = dc.field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether to use information from argument blocks in functions and methods "
+                "to document input (and output) parameters. Any single %% comment after the "
+                "argument will be treated as the argument description. \n"
+                "This option does not disregard any parameters defined by the user in the "
+                "function/method header docstring itself."
+            ),
+            "sphinx_type": bool,
+            "category": "render",
+        },
+    )
+
+    argument_options_table: bool = dc.field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether to include the name-value pairs defined in the argument block of "
+                "functions/methods in the docstring in table format."
+            ),
+            "sphinx_type": bool,
             "category": "render",
         },
     )
@@ -142,6 +171,19 @@ class Config:
             ),
             "sphinx_type": str,
             "doc_type": '"merge" | "both"',
+            "category": "render",
+        },
+    )
+
+    class_properties_table: bool = dc.field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether to include the publicly accessible properties of the class in the "
+                "docstring in table format. Any single %% comment after the "
+                "property will be treated as the property description."
+            ),
+            "sphinx_type": bool,
             "category": "render",
         },
     )

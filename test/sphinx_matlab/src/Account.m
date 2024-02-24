@@ -1,11 +1,11 @@
-classdef Account < user.handle & BaseAccount % Models a bank account
+classdef (Abstract, Hidden = true) Account < user.handle & BaseAccount % Models a bank account
     % An account
     %
     % This is the class docstring
     % Something something
 
     properties (Access=private)
-        Value
+        Value % Some value
     end
     % Some methods
     methods (Access=private)
