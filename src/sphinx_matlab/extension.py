@@ -6,6 +6,7 @@ from sphinx.application import Sphinx
 
 from . import __version__
 from .config import CONFIG_PREFIX, Config
+from .directives import FunctionRenderer
 from .matlab import get_matobject
 from .utils import WarningSubtypes, load_config, warn_sphinx
 
@@ -25,6 +26,8 @@ def setup(app: Sphinx):
         )
 
     app.connect("builder-inited", create_namespace)
+    app.add_directive("matlab-function", FunctionRenderer)
+    
     return {
         "version": __version__,
         # "env_version": "hash_based_on_filetree",
@@ -51,7 +54,7 @@ def create_namespace(app: Sphinx) -> None:
     workspace.init_namespace(qualified_path)
     app.env.workspace = workspace
 
-    node = app.env.workspace.find_symbol("Account")
-    obj = get_matobject(node)
-    print(obj.doc)
+    # node = app.env.workspace.find_symbol("Account")
+    # obj = get_matobject(node)
+    # print(obj.doc)
     return
