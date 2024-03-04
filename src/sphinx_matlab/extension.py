@@ -58,10 +58,4 @@ def create_namespace(app: Sphinx) -> None:
     # obj = get_matobject(node)
     # print(obj.doc)
 
-    import dill
-
-    element = workspace.find_symbol("AnEnum")._element
-    dill.detect.baditems(element)
-    element.children[0].children[12]
-
     return
