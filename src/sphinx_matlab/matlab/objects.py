@@ -22,6 +22,11 @@ _COMMENT_TOKENS = [
 ]
 
 
+def _get_offset(element: ContentElement) -> int:
+    first_charater_position = next(iter(element.characters))
+    return first_charater_position[0]
+
+
 class MatObject(Protocol):
     _textmate_token: str = ""
 
@@ -38,6 +43,7 @@ class Script(MatObject):
 
     def __init__(self, node: NamespaceNode, **kwargs) -> None:
         self.validate_token(node._element)
+        self.offset = 0
         self.node = node
         self.element = node._element
 
@@ -78,6 +84,8 @@ class Property(MatObject):
 
         self.validate_token(element)
         self.element = element
+        self.offset = _get_offset(element)
+
         self._attributes = attributes
 
         self.name: str = element.begin[0].content
@@ -134,6 +142,7 @@ class Function(MatObject):
         self.validate_token(node._element)
         self.node = node
         self.element = node._element
+        self.offset = _get_offset(node._element)
         self._process_elements(node._element)
 
     def _process_elements(self, element: ContentBlockElement):
@@ -279,6 +288,7 @@ class Classdef(MatObject):
     def __init__(self, node: NamespaceNode) -> None:
         self.validate_token(node._element)
         self.node = node
+        self.offset = 0
 
         self.local_name: str = ""
         self.ancestors: list[str] = []
