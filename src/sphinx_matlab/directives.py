@@ -1,10 +1,13 @@
 import typing as t
 
-from autodoc2.sphinx.docstring import parser_options
+from autodoc2.sphinx.docstring import parser_options, parsing_context, change_source
 from autodoc2.utils import WarningSubtypes
 from docutils import nodes
+from docutils.parsers import Parser
 from docutils.parsers.rst import directives, roles
-from sphinx.util.docutils import SphinxDirective
+from docutils.statemachine import StringList
+from sphinx.util.docutils import SphinxDirective, new_document
+from sphinx.util.logging import prefixed_warnings
 
 from .matlab import objects as objects
 from .utils import load_config, warn_sphinx
@@ -28,7 +31,7 @@ class FunctionRenderer(SphinxDirective):
         "parser": parser_options,
         "literal": directives.flag,
         "literal-lexer": directives.unchanged,
-        "literal-lineos": directives.flag,
+        "literal-linenos": directives.flag,
     }
 
     def run(self) -> list[nodes.Node]:
@@ -60,11 +63,11 @@ class FunctionRenderer(SphinxDirective):
             )
         config = load_config(self.env.app, overrides=overrides, location=warning_loc)
         item = objects.Function(workspace_node)
-        document = item.doc(config)
+        docstring = item.doc(config)
 
         if "literal" in self.options:
             # return the literal docstring
-            literal = nodes.literal_block(text=document)
+            literal = nodes.literal_block(text=docstring)
             self.set_source_info(literal)
             if "literal-lexer" in self.options:
                 literal["language"] = self.options["literal-lexer"]
@@ -72,5 +75,46 @@ class FunctionRenderer(SphinxDirective):
                 literal["linenos"] = True
                 literal["highlight_args"] = {"linenostart": 1 + item.offset}
             return [literal]
+        
+        source_path = str(workspace_node.full_path)
+        self.env.note_dependency(source_path)
+
+        with prefixed_warnings("[spinx-matlab]"):
+            if self.options.get("parser", None):
+                # parse into a dummy document and return created nodes
+                parser: Parser = self.options["parser"]()
+                document = new_document(
+                    source_path,
+                    self.state.document.settings,
+                )
+                document.reporter.get_source_and_line = lambda li: (
+                    source_path,
+                    li + item.offset,
+                )
+                with parsing_context():
+                    parser.parse(docstring, document)
+                children = document.children or []
+            else:
+               
+                doc_lines = docstring.splitlines()
+                with change_source(
+                    self.state, source_path, item.offset - directive_line
+                ):
+                    base = nodes.Element()
+                    base.source = source_path
+                    base.line = item.offset
+                    content = StringList(
+                        doc_lines,
+                        source=source_path,
+                        items=[
+                            (source_path, i + item.offset + 1)
+                            for i in range(len(doc_lines))
+                        ],
+                    )
+                    self.state.nested_parse(
+                        content, 0, base, match_titles="allowtitles" in self.options
+                    )
+                children = base.children or []
+        return children
 
         pass
