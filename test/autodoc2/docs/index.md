@@ -21,7 +21,7 @@ and, using the `fieldlist` extension, a field list:
 
 # Welcome to learn-autodoc's documentation!
 
-```{autodoc2-docstring} src.test._example
+<!-- ```{autodoc2-docstring} src.test._example
 ---
 literal:
 literal-linenos:
@@ -31,12 +31,16 @@ literal-lexer: markdown
 
 ```{autodoc2-docstring} src.test._example
 ---
-parser: myst
 ---
-```
+``` -->
 
 :::{autodoc2-object} src.test._example
     no_index = true
 :::
 
 
+<!-- # Index
+
+```{toctree}
+apidocs/index
+``` -->

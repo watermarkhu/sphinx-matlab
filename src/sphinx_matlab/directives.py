@@ -1,6 +1,6 @@
 import typing as t
 
-from autodoc2.sphinx.docstring import parser_options, parsing_context, change_source
+from autodoc2.sphinx.docstring import change_source, parser_options, parsing_context
 from autodoc2.utils import WarningSubtypes
 from docutils import nodes
 from docutils.parsers import Parser
@@ -62,6 +62,8 @@ class FunctionRenderer(SphinxDirective):
                 location=warning_loc,
             )
         config = load_config(self.env.app, overrides=overrides, location=warning_loc)
+
+        # TODO this only works for functions
         item = objects.Function(workspace_node)
         docstring = item.doc(config)
 
@@ -89,7 +91,9 @@ class FunctionRenderer(SphinxDirective):
                 )
                 document.reporter.get_source_and_line = lambda li: (
                     source_path,
-                    li + item.offset,
+                    li + item.offset, 
+                    # TODO this reporter offset does not work properly 
+                    # Especially when arguments are autodocumented
                 )
                 with parsing_context():
                     parser.parse(docstring, document)
@@ -116,5 +120,3 @@ class FunctionRenderer(SphinxDirective):
                     )
                 children = base.children or []
         return children
-
-        pass
