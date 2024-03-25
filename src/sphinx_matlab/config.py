@@ -82,25 +82,25 @@ class Config:
         },
     )
 
-    hidden_objects: set[
-        t.Literal["undoc", "hidden", "private", "protected", "inherited"]
-    ] = dc.field(
-        default_factory=lambda: {"hidden", "private", "inherited"},
-        metadata={
-            "help": (
-                "The default hidden items. "
-                "Can contain:\n"
-                "- `undoc`: undocumented objects\n"
-                "- `hidden`: Hidden methods, e.g. `(Hidden)`\n"
-                "- `private`: Private method, e.g. `(Access=private)`\n"
-                "- `protected`: Protected method, e.g. `(Access=protected)`\n"
-                "- `inherited`: inherited class methods\n"
-            ),
-            "sphinx_type": list,
-            "sphinx_validate": _validate_hidden_objects,
-            "doc_type": 'list["undoc" | "dunder" | "private" | "inherited"]',
-            "category": "render",
-        },
+    hidden_objects: set[t.Literal["undoc", "hidden", "private", "protected", "inherited"]] = (
+        dc.field(
+            default_factory=lambda: {"hidden", "private", "inherited"},
+            metadata={
+                "help": (
+                    "The default hidden items. "
+                    "Can contain:\n"
+                    "- `undoc`: undocumented objects\n"
+                    "- `hidden`: Hidden methods, e.g. `(Hidden)`\n"
+                    "- `private`: Private method, e.g. `(Access=private)`\n"
+                    "- `protected`: Protected method, e.g. `(Access=protected)`\n"
+                    "- `inherited`: inherited class methods\n"
+                ),
+                "sphinx_type": list,
+                "sphinx_validate": _validate_hidden_objects,
+                "doc_type": 'list["undoc" | "dunder" | "private" | "inherited"]',
+                "category": "render",
+            },
+        )
     )
 
     no_index: bool = dc.field(
